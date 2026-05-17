@@ -164,6 +164,7 @@ class TransferSession {
   final Map<String, bool> _fileCompleted = {};
   Completer<void>? _allFilesDone;
   Completer<void>? _acceptReceived;
+  bool _acceptRejected = false;
   // 文件列表
   final List<FileEntry> _files = [];
 
@@ -261,11 +262,10 @@ class TransferSession {
 
     // 阶段 5: 发送 TRANSFER_OFFER，等待接收端 TRANSFER_ACCEPT 再发送文件数据
     _sendTransferOffer();
-    _sendEvent('mode_change', {
+    _sendEvent('phase_change', {
       'transferId': transferId,
-      'mode': _strategy.name,
-      'fileCount': _files.length,
-      'totalSize': _totalSize,
+      'phase': 'awaiting_accept',
+      'message': 'Waiting for receiver to accept...',
     });
 
     _acceptReceived = Completer<void>();
@@ -277,10 +277,41 @@ class TransferSession {
       Logger.log('[ENG] TRANSFER_ACCEPT timeout');
       _sendEvent('error', {
         'transferId': transferId,
-        'message': 'Receiver did not accept transfer (timeout)',
+        'message': 'Receiver did not respond (timeout)',
       });
+      _stopHeartbeat();
+      try { _socket?.close(); } catch (_) {}
       return;
     }
+
+    // TRANSFER_REJECT received (signalled via _acceptRejected flag)
+    if (_acceptRejected) {
+      Logger.log('[ENG] TRANSFER_REJECT received');
+      _sendEvent('phase_change', {
+        'transferId': transferId,
+        'phase': 'rejected',
+        'message': 'Receiver declined the transfer',
+      });
+      _stopHeartbeat();
+      try { _socket?.close(); } catch (_) {}
+      return;
+    }
+
+    // Cancelled while waiting for accept
+    if (_cancelled) {
+      Logger.log('[ENG] cancelled while awaiting accept');
+      _stopHeartbeat();
+      try { _socket?.close(); } catch (_) {}
+      return;
+    }
+
+    // TRANSFER_ACCEPT — proceed to transfer
+    _sendEvent('mode_change', {
+      'transferId': transferId,
+      'mode': _strategy.name,
+      'fileCount': _files.length,
+      'totalSize': _totalSize,
+    });
 
     // 阶段 6: 开始传输
     await _executeTransfer();
@@ -715,13 +746,16 @@ class TransferSession {
       case FlpMessageType.helloAck:
         break;
       case FlpMessageType.transferAccept:
+        Logger.log('[ENG] TRANSFER_ACCEPT received, completing _acceptReceived');
         if (_acceptReceived != null && !_acceptReceived!.isCompleted) {
           _acceptReceived!.complete();
         }
         break;
       case FlpMessageType.transferReject:
+        Logger.log('[ENG] TRANSFER_REJECT received, signalling rejection');
+        _acceptRejected = true;
         if (_acceptReceived != null && !_acceptReceived!.isCompleted) {
-          _acceptReceived!.completeError('Transfer rejected by receiver');
+          _acceptReceived!.complete();
         }
         break;
       case FlpMessageType.transferCancel:

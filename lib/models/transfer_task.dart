@@ -6,6 +6,8 @@ enum TransferStatus {
   scanning,
   connecting,
   awaitingAccept,
+  accepted,
+  rejected,
   transferring,
   paused,
   completed,

@@ -312,6 +312,14 @@ class _ActiveTransferCard extends StatelessWidget {
                 ),
               ],
             ),
+            if (task.errorMessage != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  task.errorMessage!,
+                  style: TextStyle(fontSize: 12, color: Colors.red.shade700),
+                ),
+              ),
             const SizedBox(height: 8),
             Row(
               mainAxisAlignment: MainAxisAlignment.end,
@@ -332,13 +340,31 @@ class _ActiveTransferCard extends StatelessWidget {
                         .read(transferNotifierProvider.notifier)
                         .resumeTransfer(task.transferId),
                   ),
-                IconButton(
-                  icon: const Icon(Icons.close, size: 20),
-                  tooltip: '取消',
-                  onPressed: () => ref
-                      .read(transferNotifierProvider.notifier)
-                      .cancelTransfer(task.transferId),
-                ),
+                if (task.status == TransferStatus.transferring ||
+                    task.status == TransferStatus.paused ||
+                    task.status == TransferStatus.awaitingAccept ||
+                    task.status == TransferStatus.connecting ||
+                    task.status == TransferStatus.scanning)
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 20),
+                    tooltip: '取消',
+                    onPressed: () => ref
+                        .read(transferNotifierProvider.notifier)
+                        .cancelTransfer(task.transferId),
+                  ),
+                if (task.status == TransferStatus.completed ||
+                    task.status == TransferStatus.failed ||
+                    task.status == TransferStatus.cancelled ||
+                    task.status == TransferStatus.rejected)
+                  TextButton(
+                    onPressed: () {
+                      ref.read(activeTransferProvider.notifier).state = null;
+                      final queue = ref.read(transferQueueProvider);
+                      ref.read(transferQueueProvider.notifier).state =
+                          queue.where((t) => t.transferId != task.transferId).toList();
+                    },
+                    child: const Text('关闭'),
+                  ),
               ],
             ),
           ],
@@ -352,6 +378,8 @@ class _ActiveTransferCard extends StatelessWidget {
       TransferStatus.scanning => ('扫描中', Colors.orange),
       TransferStatus.connecting => ('连接中', Colors.orange),
       TransferStatus.awaitingAccept => ('等待接受', Colors.orange),
+      TransferStatus.accepted => ('已接受', Colors.lightGreen),
+      TransferStatus.rejected => ('已拒绝', Colors.red),
       TransferStatus.transferring => ('传输中', Colors.blue),
       TransferStatus.paused => ('已暂停', Colors.orange),
       TransferStatus.completed => ('完成', Colors.green),
@@ -438,6 +466,14 @@ class _ReceiveTransferCard extends StatelessWidget {
                 ),
               ],
             ),
+            if (task.errorMessage != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  task.errorMessage!,
+                  style: TextStyle(fontSize: 12, color: Colors.red.shade700),
+                ),
+              ),
             const SizedBox(height: 4),
             Row(
               children: [
@@ -459,6 +495,16 @@ class _ReceiveTransferCard extends StatelessWidget {
                     label: const Text('取消接收'),
                     style: TextButton.styleFrom(foregroundColor: Colors.red),
                   ),
+                if (task.status == TransferStatus.completed ||
+                    task.status == TransferStatus.failed ||
+                    task.status == TransferStatus.cancelled ||
+                    task.status == TransferStatus.rejected)
+                  TextButton(
+                    onPressed: () {
+                      ref.read(receiveTransferProvider.notifier).state = null;
+                    },
+                    child: const Text('关闭'),
+                  ),
               ],
             ),
           ],
@@ -469,9 +515,12 @@ class _ReceiveTransferCard extends StatelessWidget {
 
   Widget _buildStatusChip(TransferStatus status) {
     final (label, color) = switch (status) {
+      TransferStatus.awaitingAccept => ('等待同意', Colors.orange),
       TransferStatus.transferring => ('接收中', Colors.blue),
       TransferStatus.completed => ('完成', Colors.green),
       TransferStatus.failed => ('失败', Colors.red),
+      TransferStatus.rejected => ('已拒绝', Colors.red),
+      TransferStatus.cancelled => ('已取消', Colors.grey),
       _ => ('等待中', Colors.grey),
     };
     return Chip(

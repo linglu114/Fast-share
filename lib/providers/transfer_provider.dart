@@ -177,9 +177,20 @@ class TransferNotifier extends Notifier<void> {
         case 'awaiting_accept':
           task.status = TransferStatus.awaitingAccept;
           break;
+        case 'transferring':
+          task.status = TransferStatus.transferring;
+          break;
+        case 'rejected':
+          task.status = TransferStatus.rejected;
+          task.errorMessage = data['message'] as String? ?? 'Receiver declined';
+          break;
       }
       return task.clone();
     });
+
+    if (phase == 'rejected' && active != null) {
+      _saveHistory(active, 'rejected');
+    }
   }
 
   void _onModeChange(Map<String, dynamic> data) {
