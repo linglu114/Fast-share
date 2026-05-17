@@ -107,7 +107,7 @@ class TransferNotifier extends Notifier<void> {
     final transferId = data['transferId'] as String? ?? '-';
 
     // Log all non-progress events for debugging
-    if (type != 'progress' && type != 'speed') {
+    if (type != 'progress') {
       Logger.log('[TF] engine event: type=$type transferId=$transferId data=${data['message'] ?? data['success'] ?? data['phase'] ?? ''}');
     }
 
@@ -125,9 +125,6 @@ class TransferNotifier extends Notifier<void> {
         break;
       case 'progress':
         _onProgress(data);
-        break;
-      case 'speed':
-        _onSpeed(data);
         break;
       case 'file_complete':
         _onFileComplete(data);
@@ -216,19 +213,9 @@ class TransferNotifier extends Notifier<void> {
       if (task == null) return null;
       task.bytesTransferred = data['bytesTransferred'] as int? ?? 0;
       task.totalSize = data['totalSize'] as int? ?? task.totalSize;
-      return task.clone();
-    });
-  }
-
-  void _onSpeed(Map<String, dynamic> data) {
-    final transferId = data['transferId'] as String;
-    final active = ref.read(activeTransferProvider);
-    if (active?.transferId != transferId) return;
-
-    ref.read(activeTransferProvider.notifier).update((task) {
-      if (task == null) return null;
-      task.avgSpeed = (data['speed'] as num?)?.toDouble() ?? 0;
-      task.peakSpeed = (data['peakSpeed'] as num?)?.toDouble() ?? 0;
+      task.avgSpeed = (data['speed'] as num?)?.toDouble() ?? task.avgSpeed;
+      final peak = (data['peakSpeed'] as num?)?.toDouble() ?? 0;
+      if (peak > task.peakSpeed) task.peakSpeed = peak;
       return task.clone();
     });
   }

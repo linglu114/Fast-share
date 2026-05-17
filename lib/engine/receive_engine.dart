@@ -39,6 +39,12 @@ class ReceiveEngine {
   List<Map<String, dynamic>> _pendingFiles = []; // for directory pre-creation
 
   final Map<String, _ReceivingFile> _files = {};
+  // Cached binary fileId for O(1) lookup without hex string conversion.
+  // Most transfers are single-file; even multi-file transfers have fileId
+  // stable within a batch of FILE_DATA frames.
+  String? _lastFileIdStr;
+  _ReceivingFile? _lastFile;
+  (int, int, int, int)? _lastFileIdBytes;
   int _totalBytesWritten = 0;
   int _pendingSize = 0;
   int _lastAckBytes = 0;
@@ -103,6 +109,9 @@ class ReceiveEngine {
   void _start(Map<String, dynamic> payload) {
     _transferId = payload['transferId'] as String;
     _saveRoot = payload['savePath'] as String;
+    _lastFileIdStr = null;
+    _lastFile = null;
+    _lastFileIdBytes = null;
     Logger.log('[RECV] _start: transferId=$_transferId saveRoot=$_saveRoot');
 
     // Pre-create directory structure from pending file list
@@ -273,29 +282,54 @@ class ReceiveEngine {
 
     try {
       final buffer = ByteData.sublistView(frame.payload);
-      int pos = 0;
 
-      // transferId (16 B)
-      pos += 16;
+      // offset (8 B at byte 36: 16 transferId + 16 fileId + 4 chunkIndex)
+      final offset = buffer.getUint64(36, Endian.big);
 
-      // fileId (16 B)
-      final fileId = _readUuid(buffer, pos);
-      pos += 16;
+      // dataLength (4 B at byte 44)
+      final dataLength = buffer.getUint32(44, Endian.big);
 
-      // chunkIndex (4 B) — skip
-      pos += 4;
+      // Fast fileId lookup: if last file matches, skip UUID parsing entirely.
+      // For single-file transfers (the common case), this avoids 3720+ string allocs.
+      _ReceivingFile? rf;
+      const pos = 48; // data starts after: 16 + 16 + 4 + 8 + 4 = 48 bytes
 
-      // offset (8 B)
-      final offset = buffer.getUint64(pos, Endian.big);
-      pos += 8;
+      if (_lastFile != null) {
+        // Check if this frame belongs to the same file (compare offset continuity)
+        // For out-of-order delivery or multi-file, fall back to UUID lookup
+        rf = _lastFile;
+        // Verify by checking if a different fileId is present at byte 16-31
+        final b0 = buffer.getUint32(16, Endian.big);
+        final b1 = buffer.getUint32(20, Endian.big);
+        final b2 = buffer.getUint32(24, Endian.big);
+        final b3 = buffer.getUint32(28, Endian.big);
+        final same = _lastFileIdBytes != null &&
+            b0 == _lastFileIdBytes!.$1 &&
+            b1 == _lastFileIdBytes!.$2 &&
+            b2 == _lastFileIdBytes!.$3 &&
+            b3 == _lastFileIdBytes!.$4;
+        if (!same) {
+          final fileId = _readUuid(buffer, 16);
+          rf = _files[fileId];
+          _lastFileIdStr = fileId;
+          _lastFile = rf;
+          _lastFileIdBytes = rf != null
+              ? (b0, b1, b2, b3)
+              : null;
+        }
+      } else {
+        final fileId = _readUuid(buffer, 16);
+        rf = _files[fileId];
+        _lastFileIdStr = fileId;
+        _lastFile = rf;
+        _lastFileIdBytes = rf != null
+            ? (buffer.getUint32(16, Endian.big), buffer.getUint32(20, Endian.big),
+               buffer.getUint32(24, Endian.big), buffer.getUint32(28, Endian.big))
+            : null;
+      }
 
-      // dataLength (4 B)
-      final dataLength = buffer.getUint32(pos, Endian.big);
-      pos += 4;
-
-      final rf = _files[fileId];
       if (rf == null) {
-        Logger.log('[RECV] Unknown fileId in FILE_DATA: $fileId');
+        Logger.log('[RECV] Unknown fileId in FILE_DATA: $_lastFileIdStr');
         return;
       }
 
@@ -306,13 +340,13 @@ class ReceiveEngine {
       rf.bytesWritten += dataLength;
       _totalBytesWritten += dataLength;
 
-      _scheduleAck(fileId);
+      _scheduleAck(rf.fileId);
       _updateSpeed();
 
       // Check if file is complete
       if (rf.bytesWritten >= rf.size) {
-        Logger.log('[RECV] _handleFileData: file complete detected fileId=$fileId bytesWritten=${rf.bytesWritten} size=${rf.size} offset=$offset dataLength=$dataLength');
-        _onFileComplete(fileId);
+        Logger.log('[RECV] _handleFileData: file complete detected fileId=${rf.fileId} bytesWritten=${rf.bytesWritten} size=${rf.size} offset=$offset dataLength=$dataLength');
+        _onFileComplete(rf.fileId);
       }
     } catch (e) {
       _sendEvent('error', {

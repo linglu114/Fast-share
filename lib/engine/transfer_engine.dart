@@ -554,9 +554,6 @@ class TransferSession {
 
         if (i % 4 == 3 || i == totalChunks - 1) {
           await _socket?.flush();
-          if (i % 100 == 99 || i == totalChunks - 1) {
-            Logger.log('[ENG] flush done: chunk $i/$totalChunks offset=$offset');
-          }
         }
       }
 
@@ -830,7 +827,6 @@ class TransferSession {
             _totalAckedBytes += ackOffset - prevAcked;
             file.lastAckedOffset = ackOffset;
           }
-          Logger.log('[ENG] _onAckReceived: fileId=$fileId ackOffset=$ackOffset prevAcked=$prevAcked totalAcked=$_totalAckedBytes totalSize=$_totalSize');
           _updateSpeed();
           _notifyProgress();
         } else {
@@ -983,12 +979,6 @@ class TransferSession {
 
       _lastSampleTime = now;
       _lastSampleBytes = _bytesTransferred;
-
-      _sendEvent('speed', {
-        'transferId': transferId,
-        'speed': _avgSpeed(),
-        'peakSpeed': _peakSpeed,
-      });
     }
   }
 
@@ -1021,6 +1011,7 @@ class TransferSession {
         'fileCount': _files.length,
         'completedFiles': _files.where((f) => f.status == FileStatus.completed).length,
       };
+
 
   // ═══════════════════════════════════════════════════════════
   // 辅助方法

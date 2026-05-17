@@ -60,10 +60,9 @@ class TcpConnection {
   /// Set by [ConnectionManager] to forward raw bytes to ReceiveEngine Isolate.
   void Function(int frameType, Uint8List rawFrame)? onRawFrame;
 
-  // Frame parse buffer using chunk list to avoid O(n²) copies
-  final List<Uint8List> _chunks = [];
-  int _totalLength = 0;
-  bool _processingScheduled = false;
+  // Single growable buffer: capacity-doubling amortizes copies to O(n) total.
+  Uint8List _buffer = Uint8List(0);
+  int _length = 0;
 
   TcpConnection(this.socket)
       : id = '${socket.remoteAddress.address}:${socket.remotePort}',
@@ -80,31 +79,36 @@ class TcpConnection {
   }
 
   void _onData(Uint8List data) {
-    _chunks.add(data);
-    _totalLength += data.length;
+    _ensureCapacity(data.length);
+    _buffer.setAll(_length, data);
+    _length += data.length;
+    _processFrames();
+  }
 
-    if (!_processingScheduled) {
-      _processFrames();
+  void _ensureCapacity(int extra) {
+    final needed = _length + extra;
+    if (needed <= _buffer.length) return;
+    var newCap = _buffer.length == 0 ? 65536 : _buffer.length;
+    while (newCap < needed) {
+      newCap *= 2;
     }
+    final newBuf = Uint8List(newCap);
+    newBuf.setAll(0, Uint8List.sublistView(_buffer, 0, _length));
+    _buffer = newBuf;
   }
 
   void _processFrames() {
-    _processingScheduled = false;
-
-    // Build contiguous buffer once per batch
-    final buffer = _buildContiguous();
     int pos = 0;
 
-    while (pos + FlpFrame.headerLength + FlpFrame.checksumLength <= buffer.length) {
-      final bd = ByteData.sublistView(buffer, pos);
+    while (pos + FlpFrame.headerLength + FlpFrame.checksumLength <= _length) {
+      final bd = ByteData.sublistView(_buffer, pos);
       final payloadLen = bd.getUint32(8, Endian.big);
       final totalFrameLen =
           FlpFrame.headerLength + payloadLen + FlpFrame.checksumLength;
 
-      if (pos + totalFrameLen > buffer.length) break;
+      if (pos + totalFrameLen > _length) break;
 
-      // Read frame type (offset 5 in header)
-      final frameType = buffer[pos + 5];
+      final frameType = _buffer[pos + 5];
 
       // Intercept FILE_DATA / FILE_META frames — forward raw bytes to
       // ReceiveEngine Isolate, skipping CRC32 on the main Isolate.
@@ -112,14 +116,14 @@ class TcpConnection {
       if (hook != null &&
           (frameType == FlpMessageType.fileData ||
            frameType == FlpMessageType.fileMeta)) {
-        final rawBytes = Uint8List.sublistView(buffer, pos, pos + totalFrameLen);
+        final rawBytes = Uint8List.sublistView(_buffer, pos, pos + totalFrameLen);
         hook(frameType, rawBytes);
         pos += totalFrameLen;
         continue;
       }
 
       try {
-        final frameBytes = Uint8List.sublistView(buffer, pos, pos + totalFrameLen);
+        final frameBytes = Uint8List.sublistView(_buffer, pos, pos + totalFrameLen);
         final frame = FlpFrame.parse(frameBytes);
         _frameController.add(frame);
       } catch (e) {
@@ -131,25 +135,11 @@ class TcpConnection {
       pos += totalFrameLen;
     }
 
-    // Store remaining data as single chunk (zero-copy view)
-    _chunks.clear();
-    _totalLength = buffer.length - pos;
-    if (_totalLength > 0) {
-      _chunks.add(Uint8List.sublistView(buffer, pos));
+    // Compact remaining data to buffer start
+    if (pos > 0 && pos < _length) {
+      _buffer.setAll(0, Uint8List.sublistView(_buffer, pos, _length));
     }
-  }
-
-  Uint8List _buildContiguous() {
-    if (_chunks.length == 1) return _chunks.first;
-    final buffer = Uint8List(_totalLength);
-    int offset = 0;
-    for (final chunk in _chunks) {
-      buffer.setAll(offset, chunk);
-      offset += chunk.length;
-    }
-    _chunks.clear();
-    _chunks.add(buffer);
-    return buffer;
+    _length -= pos;
   }
 
   /// 发送 Frame
