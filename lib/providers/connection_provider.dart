@@ -152,7 +152,8 @@ class ConnectionNotifier extends Notifier<Map<String, bool>> {
           break;
 
         case FlpMessageType.clipboardPush:
-          final text = utf8.decode(peerFrame.frame.payload);
+          final payload = jsonDecode(utf8.decode(peerFrame.frame.payload));
+          final text = payload['text'] as String? ?? '';
           _clipboardController
               .add(ClipboardPush(deviceId: peerFrame.deviceId, text: text));
           break;
