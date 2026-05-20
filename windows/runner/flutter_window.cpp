@@ -4,13 +4,13 @@
 
 #include "flutter/generated_plugin_registrant.h"
 
-namespace {
-constexpr LONG kFixedWidth = 400;
-constexpr LONG kFixedHeight = 720;
-}  // namespace
-
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
+
+void FlutterWindow::SetFixedSize(int width, int height) {
+  fixed_width_ = width;
+  fixed_height_ = height;
+}
 
 FlutterWindow::~FlutterWindow() {}
 
@@ -81,13 +81,12 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
       break;
     case WM_GETMINMAXINFO: {
       MINMAXINFO* mmi = reinterpret_cast<MINMAXINFO*>(lparam);
-      // Fixed window size
-      mmi->ptMinTrackSize.x = kFixedWidth;
-      mmi->ptMinTrackSize.y = kFixedHeight;
-      mmi->ptMaxTrackSize.x = kFixedWidth;
-      mmi->ptMaxTrackSize.y = kFixedHeight;
-      mmi->ptMaxSize.x = kFixedWidth;
-      mmi->ptMaxSize.y = kFixedHeight;
+      mmi->ptMinTrackSize.x = fixed_width_;
+      mmi->ptMinTrackSize.y = fixed_height_;
+      mmi->ptMaxTrackSize.x = fixed_width_;
+      mmi->ptMaxTrackSize.y = fixed_height_;
+      mmi->ptMaxSize.x = fixed_width_;
+      mmi->ptMaxSize.y = fixed_height_;
       return 0;
     }
   }

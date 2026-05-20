@@ -38,6 +38,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     width = std::max(400, std::min(static_cast<int>(screenW * 0.30), 500));
     height = std::max(640, std::min(static_cast<int>(screenH * 0.60), 820));
   }
+  window.SetFixedSize(width, height);
   Win32Window::Point origin(10, 10);
   Win32Window::Size size(width, height);
   if (!window.Create(L"fastshare", origin, size)) {
