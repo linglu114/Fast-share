@@ -27,16 +27,36 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
 
   FlutterWindow window(project);
 
-  // Scale window to a phone-like proportion of the screen work area
-  // so it looks balanced on any resolution (low-DPI to 4K).
+  // 9:20 ratio window.
+  // SystemParametersInfo returns physical pixels; convert to logical
+  // (96 DPI) since Win32Window::Create() scales the passed size by DPI.
   RECT workArea;
   int width = 400;
-  int height = 720;
+  int height = 889;  // 400 * 20/9 fallback
   if (::SystemParametersInfo(SPI_GETWORKAREA, 0, &workArea, 0)) {
-    int screenW = workArea.right - workArea.left;
-    int screenH = workArea.bottom - workArea.top;
-    width = std::max(400, std::min(static_cast<int>(screenW * 0.30), 500));
-    height = std::max(640, std::min(static_cast<int>(screenH * 0.60), 820));
+    HDC hdc = GetDC(nullptr);
+    int dpi = GetDeviceCaps(hdc, LOGPIXELSX);
+    ReleaseDC(nullptr, hdc);
+    double scale = dpi / 96.0;
+
+    int logicalW = static_cast<int>((workArea.right - workArea.left) / scale);
+    int logicalH = static_cast<int>((workArea.bottom - workArea.top) / scale);
+
+    // Height is the primary constraint (screens are usually wider than tall).
+    // At 9:20 ratio, width = height * 9/20.
+    int maxH = logicalH * 90 / 100;
+    int maxW = logicalW * 85 / 100;
+
+    width = maxH * 9 / 20;
+    if (width > maxW) width = maxW;
+    if (width > 540) width = 540;
+    if (width < 360) width = 360;
+
+    height = width * 20 / 9;
+    if (height > maxH) {
+      height = maxH;
+      width = height * 9 / 20;
+    }
   }
   window.SetFixedSize(width, height);
   Win32Window::Point origin(10, 10);
