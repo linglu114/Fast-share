@@ -1,8 +1,13 @@
-#include "flutter_window.h"
+﻿#include "flutter_window.h"
 
 #include <optional>
 
 #include "flutter/generated_plugin_registrant.h"
+
+namespace {
+constexpr LONG kFixedWidth = 400;
+constexpr LONG kFixedHeight = 720;
+}  // namespace
 
 FlutterWindow::FlutterWindow(const flutter::DartProject& project)
     : project_(project) {}
@@ -15,6 +20,15 @@ bool FlutterWindow::OnCreate() {
   }
 
   RECT frame = GetClientArea();
+
+  // Remove resize border and maximize button for fixed-size window
+  HWND hwnd = GetHandle();
+  LONG_PTR style = GetWindowLongPtr(hwnd, GWL_STYLE);
+  style &= ~(WS_THICKFRAME | WS_MAXIMIZEBOX);
+  SetWindowLongPtr(hwnd, GWL_STYLE, style);
+  // Recalculate the non-client area after style change
+  SetWindowPos(hwnd, nullptr, 0, 0, 0, 0,
+               SWP_NOZORDER | SWP_NOMOVE | SWP_NOSIZE | SWP_FRAMECHANGED);
 
   // The size here must match the window dimensions to avoid unnecessary surface
   // creation / destruction in the startup path.
@@ -67,9 +81,13 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
       break;
     case WM_GETMINMAXINFO: {
       MINMAXINFO* mmi = reinterpret_cast<MINMAXINFO*>(lparam);
-      // Phone-like minimum size (9:16 ratio)
-      mmi->ptMinTrackSize.x = 360;
-      mmi->ptMinTrackSize.y = 640;
+      // Fixed window size
+      mmi->ptMinTrackSize.x = kFixedWidth;
+      mmi->ptMinTrackSize.y = kFixedHeight;
+      mmi->ptMaxTrackSize.x = kFixedWidth;
+      mmi->ptMaxTrackSize.y = kFixedHeight;
+      mmi->ptMaxSize.x = kFixedWidth;
+      mmi->ptMaxSize.y = kFixedHeight;
       return 0;
     }
   }
