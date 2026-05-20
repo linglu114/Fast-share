@@ -91,15 +91,14 @@ class DiscoveryNotifier extends Notifier<List<Device>> {
       _deviceDownController.add(deviceId);
     });
 
-    // 先解析 IP，再用最佳 IP 绑定启动
+    // 解析 IP 用于广播目标，但移动端用 anyIPv4 绑定以确保能收到广播
     Future(() async {
       await _resolveLocalIp();
-      final bindAddr = localIp;
-      Logger.log('[DISCOVERY] Resolved IPs: $_allLocalIps, bindAddr=$bindAddr');
+      // Android/iOS: bind to anyIPv4 — specific-IP bind can drop broadcasts on mobile
+      final bindAddr = Platform.isAndroid || Platform.isIOS ? null : localIp;
+      Logger.log('[DISCOVERY] Resolved IPs: $_allLocalIps, bindAddr=${bindAddr ?? "anyIPv4"}');
       await _service!.start(bindAddress: bindAddr);
-      if (bindAddr != null) {
-        _service!.updateBroadcastAddresses(_allLocalIps);
-      }
+      _service!.updateBroadcastAddresses(_allLocalIps);
     });
   }
 

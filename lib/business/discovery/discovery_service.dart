@@ -65,7 +65,12 @@ class DiscoveryService {
       return;
     }
 
-    _socket!.listen(_onData);
+    _socket!.listen(
+      _onData,
+      onError: (e) => Logger.log('[DISCOVERY] Socket error: $e'),
+      onDone: () => Logger.log('[DISCOVERY] Socket closed'),
+      cancelOnError: false,
+    );
     // Burst broadcasts for fast initial discovery
     _broadcast();
     Future.delayed(const Duration(milliseconds: 500), _broadcast);
@@ -119,7 +124,10 @@ class DiscoveryService {
   }
 
   void _onData(RawSocketEvent event) {
-    if (event != RawSocketEvent.read) return;
+    if (event != RawSocketEvent.read) {
+      Logger.log('[DISCOVERY] Non-read socket event: $event');
+      return;
+    }
 
     final datagram = _socket!.receive();
     if (datagram == null) return;
