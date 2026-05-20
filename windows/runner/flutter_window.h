@@ -35,6 +35,8 @@ class FlutterWindow : public Win32Window {
   // Fixed window dimensions (logical pixels).
   int fixed_width_ = 400;
   int fixed_height_ = 720;
+  // DPI scale factor at window creation.
+  double dpi_scale_ = 1.0;
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_

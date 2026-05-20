@@ -1,5 +1,6 @@
 ﻿#include "flutter_window.h"
 
+#include <flutter_windows.h>
 #include <optional>
 
 #include "flutter/generated_plugin_registrant.h"
@@ -21,8 +22,13 @@ bool FlutterWindow::OnCreate() {
 
   RECT frame = GetClientArea();
 
-  // Remove resize border and maximize button for fixed-size window
+  // Store DPI scale for use in WM_WINDOWPOSCHANGING / WM_DPICHANGED
   HWND hwnd = GetHandle();
+  HMONITOR monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+  UINT dpi = FlutterDesktopGetDpiForMonitor(monitor);
+  dpi_scale_ = dpi / 96.0;
+
+  // Remove resize border and maximize button for fixed-size window
   LONG_PTR style = GetWindowLongPtr(hwnd, GWL_STYLE);
   style &= ~(WS_THICKFRAME | WS_MAXIMIZEBOX);
   SetWindowLongPtr(hwnd, GWL_STYLE, style);
@@ -65,8 +71,17 @@ LRESULT
 FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
                               WPARAM const wparam,
                               LPARAM const lparam) noexcept {
-  // Handle size constraints before Flutter — WM_GETMINMAXINFO must not
-  // be intercepted by Flutter's HandleTopLevelWindowProc.
+  // Block ALL size changes. Any code (Flutter, plugins, Windows itself)
+  // that tries to resize this window will hit this and the size will be
+  // forced back to our fixed dimensions at the current DPI.
+  if (message == WM_WINDOWPOSCHANGING) {
+    auto* wp = reinterpret_cast<WINDOWPOS*>(lparam);
+    wp->cx = static_cast<int>(fixed_width_ * dpi_scale_);
+    wp->cy = static_cast<int>(fixed_height_ * dpi_scale_);
+    wp->flags &= ~SWP_NOSIZE;  // ensure size is applied
+    // Fall through to DefWindowProc (Win32Window::MessageHandler → DefWindowProc)
+  }
+
   if (message == WM_GETMINMAXINFO) {
     MINMAXINFO* mmi = reinterpret_cast<MINMAXINFO*>(lparam);
     mmi->ptMinTrackSize.x = fixed_width_;
@@ -78,13 +93,12 @@ FlutterWindow::MessageHandler(HWND hwnd, UINT const message,
     return 0;
   }
 
-  // Prevent Windows from changing our size during DPI transitions
   if (message == WM_DPICHANGED) {
-    auto newRect = reinterpret_cast<RECT*>(lparam);
-    double dpiScale = static_cast<double>(LOWORD(wparam)) / 96.0;
+    dpi_scale_ = static_cast<double>(LOWORD(wparam)) / 96.0;
+    auto* newRect = reinterpret_cast<RECT*>(lparam);
     SetWindowPos(hwnd, nullptr, newRect->left, newRect->top,
-                 static_cast<int>(fixed_width_ * dpiScale),
-                 static_cast<int>(fixed_height_ * dpiScale),
+                 static_cast<int>(fixed_width_ * dpi_scale_),
+                 static_cast<int>(fixed_height_ * dpi_scale_),
                  SWP_NOZORDER | SWP_NOACTIVATE);
     return 0;
   }
