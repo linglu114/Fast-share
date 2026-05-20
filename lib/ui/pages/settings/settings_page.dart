@@ -1,6 +1,9 @@
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../providers/settings_provider.dart';
+import '../../../storage/settings_repository.dart';
 import '../../../storage/trusted_device_repository.dart';
 
 /// 设置页 (需求 §5,§12,§16,§21,§22,§32)
@@ -324,27 +327,11 @@ class SettingsPage extends ConsumerWidget {
   }
 
   Future<void> _editDownloadPath(BuildContext context, WidgetRef ref) async {
-    final controller =
-        TextEditingController(text: ref.read(downloadPathProvider));
     final result = await showDialog<String>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('下载保存路径'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: const InputDecoration(hintText: '输入文件夹路径'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, controller.text.trim()),
-            child: const Text('保存'),
-          ),
-        ],
+      builder: (ctx) => _DownloadPathDialog(
+        currentPath: ref.read(downloadPathProvider),
+        defaultPath: SettingsRepository.defaultDownloadPath,
       ),
     );
     if (result != null && result.isNotEmpty) {
@@ -415,6 +402,99 @@ class SettingsPage extends ConsumerWidget {
       true => '深色模式',
       false => '浅色模式',
     };
+  }
+}
+
+/// 下载路径编辑弹窗 — 路径选择器 + 恢复默认
+class _DownloadPathDialog extends StatefulWidget {
+  final String currentPath;
+  final String defaultPath;
+  const _DownloadPathDialog({required this.currentPath, required this.defaultPath});
+
+  @override
+  State<_DownloadPathDialog> createState() => _DownloadPathDialogState();
+}
+
+class _DownloadPathDialogState extends State<_DownloadPathDialog> {
+  late String _path;
+
+  @override
+  void initState() {
+    super.initState();
+    _path = widget.currentPath;
+  }
+
+  Future<void> _pickFolder() async {
+    final dir = await FilePicker.getDirectoryPath();
+    if (dir != null && dir.isNotEmpty) {
+      setState(() => _path = dir);
+    }
+  }
+
+  void _restoreDefault() {
+    setState(() => _path = widget.defaultPath);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isDefault = _path == widget.defaultPath;
+    return AlertDialog(
+      title: const Text('下载保存路径'),
+      content: SizedBox(
+        width: 400,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Text(
+                _path,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontFamily: Platform.isWindows ? 'Consolas' : null,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                OutlinedButton.icon(
+                  icon: const Icon(Icons.folder_open, size: 18),
+                  label: const Text('浏览...'),
+                  onPressed: _pickFolder,
+                ),
+                const SizedBox(width: 12),
+                OutlinedButton.icon(
+                  icon: Icon(
+                    isDefault ? Icons.check_circle : Icons.restore,
+                    size: 18,
+                  ),
+                  label: const Text('恢复默认'),
+                  onPressed: isDefault ? null : _restoreDefault,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, _path),
+          child: const Text('保存'),
+        ),
+      ],
+    );
   }
 }
 
