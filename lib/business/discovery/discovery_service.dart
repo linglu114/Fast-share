@@ -51,6 +51,12 @@ class DiscoveryService {
     _started = true;
 
     await _bind(bindAddress);
+    // 绑定指定 IP 失败时回退到 anyIPv4
+    if (_socket == null && bindAddress != null) {
+      // ignore: avoid_print
+      print('[DiscoveryService] Retrying with anyIPv4 fallback...');
+      await _bind(null);
+    }
     if (_socket == null) {
       _started = false;
       return;
@@ -91,6 +97,11 @@ class DiscoveryService {
     _socket = null;
 
     await _bind(bindAddress);
+    if (_socket == null) {
+      // ignore: avoid_print
+      print('[DiscoveryService] rebind: retrying with anyIPv4 fallback...');
+      await _bind(null);
+    }
     if (_socket == null) return;
 
     _socket!.listen(_onData);
