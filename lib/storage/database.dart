@@ -21,8 +21,8 @@ class AppDatabase {
   static Future<Database> get database async {
     if (_database != null) return _database!;
 
-    // 所有平台启用 FFI（Android 原生 sqflite_android 与 SDK 35 不兼容）
-    if (Platform.isAndroid || !Platform.isIOS) {
+    // 桌面端使用 FFI；移动端使用原生 sqflite 实现
+    if (!Platform.isAndroid && !Platform.isIOS) {
       initializeForDesktop();
     }
 
