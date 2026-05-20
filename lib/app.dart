@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'models/device.dart';
@@ -67,13 +66,13 @@ class _FastShareAppState extends ConsumerState<FastShareApp> {
         colorSchemeSeed: Colors.blue,
         useMaterial3: true,
         brightness: Brightness.light,
-        fontFamily: Platform.isWindows ? 'Segoe UI' : null,
+        fontFamily: 'HarmonyOS Sans SC',
       ),
       darkTheme: ThemeData(
         colorSchemeSeed: Colors.blue,
         useMaterial3: true,
         brightness: Brightness.dark,
-        fontFamily: Platform.isWindows ? 'Segoe UI' : null,
+        fontFamily: 'HarmonyOS Sans SC',
       ),
       themeMode: themeMode,
       home: Scaffold(
