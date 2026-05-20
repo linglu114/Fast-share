@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show Platform;
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,6 +12,8 @@ import '../../../business/connection/connection_manager.dart';
 import '../../../providers/discovery_provider.dart';
 import '../../../providers/connection_provider.dart';
 import '../../../providers/settings_provider.dart';
+import '../../../providers/transfer_provider.dart';
+import '../../../providers/clipboard_provider.dart';
 import '../../../storage/trusted_device_repository.dart';
 import 'pairing_dialog.dart';
 
@@ -191,14 +194,6 @@ class _DevicesPageState extends ConsumerState<DevicesPage>
           children: [
             if (isConnected) ...[
               IconButton(
-                icon: const Icon(Icons.send, size: 18),
-                tooltip: '发送文件',
-                onPressed: () {
-                  // 跳转到传输页并预选该设备
-                  Navigator.of(context).pushNamed('/transfer');
-                },
-              ),
-              IconButton(
                 icon: const Icon(Icons.link_off, size: 18),
                 tooltip: '断开连接',
                 color: Colors.red.shade400,
@@ -208,6 +203,16 @@ class _DevicesPageState extends ConsumerState<DevicesPage>
                     SnackBar(content: Text('已断开与 ${device.name} 的连接')),
                   );
                 },
+              ),
+              IconButton(
+                icon: const Icon(Icons.send, size: 18),
+                tooltip: '发送文件',
+                onPressed: () => _sendFilesToDevice(context, ref, device),
+              ),
+              IconButton(
+                icon: const Icon(Icons.content_paste, size: 18),
+                tooltip: '发送剪贴板',
+                onPressed: () => _showClipboardSendDialog(context, ref, device),
               ),
             ] else ...[
               TextButton(
@@ -379,6 +384,122 @@ class _DevicesPageState extends ConsumerState<DevicesPage>
       ref,
       notifier,
       onDeviceFound: (device) => _connectToDevice(context, ref, device),
+    );
+  }
+
+  // ═══ 发送文件 / 剪贴板 ═══
+
+  Future<void> _sendFilesToDevice(
+      BuildContext context, WidgetRef ref, Device device) async {
+    final choice = await showModalBottomSheet<String>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('发送内容',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.insert_drive_file),
+              title: const Text('发送文件'),
+              subtitle: const Text('选择一个或多个文件'),
+              onTap: () => Navigator.pop(ctx, 'files'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.folder),
+              title: const Text('发送文件夹'),
+              subtitle: const Text('选择整个文件夹'),
+              onTap: () => Navigator.pop(ctx, 'folder'),
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+
+    if (choice == null || !context.mounted) return;
+
+    if (choice == 'files') {
+      final result = await FilePicker.pickFiles(
+        allowMultiple: true,
+        type: FileType.any,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final paths = result.files
+          .where((f) => f.path != null)
+          .map((f) => f.path!)
+          .toList();
+      if (paths.isEmpty) return;
+      await _startTransferToDevice(ref, device, paths, false);
+    } else if (choice == 'folder') {
+      final path = await FilePicker.getDirectoryPath();
+      if (path == null) return;
+      await _startTransferToDevice(ref, device, [path], true);
+    }
+  }
+
+  Future<void> _startTransferToDevice(
+      WidgetRef ref, Device device, List<String> paths, bool folderMode) async {
+    await ref.read(transferNotifierProvider.notifier).startTransfer(
+          paths: paths,
+          targetDevice: device,
+          folderMode: folderMode,
+          ref: ref,
+        );
+  }
+
+  void _showClipboardSendDialog(
+      BuildContext context, WidgetRef ref, Device device) {
+    final textController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.content_paste, size: 20),
+            const SizedBox(width: 8),
+            Text('发送剪贴板内容到 ${device.name}'),
+          ],
+        ),
+        content: TextField(
+          controller: textController,
+          autofocus: true,
+          maxLines: 5,
+          minLines: 3,
+          textInputAction: TextInputAction.newline,
+          decoration: const InputDecoration(
+            hintText: '输入要发送的文本...',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('关闭'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final text = textController.text;
+              if (text.isEmpty) {
+                Navigator.pop(ctx);
+                return;
+              }
+              ref
+                  .read(clipboardNotifierProvider.notifier)
+                  .pushText(device.deviceId, text);
+              Navigator.pop(ctx);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('已发送剪贴板内容到 ${device.name}')),
+              );
+            },
+            child: const Text('发送'),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -10,6 +10,7 @@ import 'providers/settings_provider.dart';
 import 'providers/connection_provider.dart';
 import 'providers/discovery_provider.dart';
 import 'providers/navigation_provider.dart';
+import 'providers/clipboard_provider.dart';
 
 /// 应用入口 — 深色模式完善 (需求 §32)
 ///
@@ -37,6 +38,7 @@ class _FastShareAppState extends ConsumerState<FastShareApp> {
     final darkMode = ref.watch(darkModeProvider);
     final currentIndex = ref.watch(currentTabProvider);
     final pendingOffer = ref.watch(pendingOfferProvider);
+    ref.watch(clipboardAutoReceiveProvider);
 
     if (pendingOffer != null && pendingOffer != _lastShownOffer) {
       _lastShownOffer = pendingOffer;
