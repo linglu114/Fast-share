@@ -13,6 +13,7 @@ import '../network/tcp_server.dart';
 import '../storage/trusted_device_repository.dart';
 import '../util/logger.dart';
 import 'settings_provider.dart';
+import 'discovery_provider.dart';
 
 /// 信任设备仓库 Provider
 final trustedDeviceRepoProvider = Provider<TrustedDeviceRepository>((ref) {
@@ -70,6 +71,11 @@ final connectionStateProvider =
     NotifierProvider<ConnectionNotifier, Map<String, bool>>(
         ConnectionNotifier.new);
 
+/// TCP 服务器实际绑定的端口（可能与设置值不同）
+final activeServerPortProvider = StateProvider<int>((ref) {
+  return ref.watch(serverPortProvider);
+});
+
 class ConnectionNotifier extends Notifier<Map<String, bool>> {
   ConnectionManager? _manager;
   TcpServer? _server;
@@ -107,6 +113,21 @@ class ConnectionNotifier extends Notifier<Map<String, bool>> {
 
     _connectedSub = _manager!.onConnected.listen((deviceId) {
       state = {...state, deviceId: true};
+      // 回退：TCP 连接建立但 UDP 广播可能丢失时，手动添加到发现列表
+      final info = _manager!.getPeerInfo(deviceId);
+      final ip = _manager!.getPeerIp(deviceId);
+      if (info != null && ip != null) {
+        final device = Device(
+          deviceId: deviceId,
+          name: info['deviceName'] as String? ?? info['name'] as String? ?? deviceId,
+          platform: info['platform'] as String? ?? 'unknown',
+          ip: ip,
+          port: info['port'] as int? ?? _manager!.port,
+          protocolVersion: info['ver'] as int? ?? 1,
+          lastSeen: DateTime.now(),
+        );
+        ref.read(onlineDevicesProvider.notifier).upsertDevice(device);
+      }
     });
 
     _receiveSub = _manager!.onReceiveEvent.listen(_handleReceiveEvent);
@@ -118,12 +139,26 @@ class ConnectionNotifier extends Notifier<Map<String, bool>> {
   }
 
   Future<void> _startServer(int port) async {
-    _server = TcpServer(port: port);
-    await _server!.start();
-    debugPrint('[FastShare] TcpServer started on port $port');
-    _serverSub = _server!.onConnection.listen((conn) {
-      _manager?.handleIncomingConnection(conn);
-    });
+    // Try the preferred port, then fall back to system-assigned
+    final ports = <int>[port, 0];
+    for (final p in ports) {
+      try {
+        _server = TcpServer(port: p);
+        await _server!.start();
+        debugPrint('[FastShare] TcpServer started on port ${_server!.port}');
+        _manager?.updatePort(_server!.port);
+        ref.read(activeServerPortProvider.notifier).state = _server!.port;
+        Logger.log('[CN] TcpServer bound to port ${_server!.port}');
+        _serverSub = _server!.onConnection.listen((conn) {
+          _manager?.handleIncomingConnection(conn);
+        });
+        return;
+      } catch (e) {
+        Logger.log('[CN] TcpServer bind failed for port $p: $e');
+        _server = null;
+      }
+    }
+    Logger.log('[CN] TcpServer failed to bind to any port');
   }
 
   void _handleFrame(PeerFrame peerFrame) {

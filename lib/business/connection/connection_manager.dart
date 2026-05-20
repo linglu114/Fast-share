@@ -46,7 +46,7 @@ class ConnectionManager {
   final String localDeviceId;
   final String localDeviceName;
   final String platform;
-  final int port;
+  int port;
 
   final Map<String, Socket> _connections = {};
   final Map<String, TcpConnection> _tcpConns = {};
@@ -92,6 +92,19 @@ class ConnectionManager {
     required this.platform,
     this.port = 45678,
   });
+
+  /// Update the port used in discovery broadcasts after TCP server binds.
+  void updatePort(int newPort) {
+    port = newPort;
+  }
+
+  /// Get IP address of a connected peer by deviceId.
+  String? getPeerIp(String deviceId) {
+    return _connections[deviceId]?.remoteAddress.address;
+  }
+
+  /// Get parsed HELLO info for a connected peer.
+  Map<String, dynamic>? getPeerInfo(String deviceId) => _peerInfo[deviceId];
 
   // ═══ 对外连接 ═══
 

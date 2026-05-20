@@ -5,6 +5,7 @@ import '../models/device.dart';
 import '../business/discovery/discovery_service.dart';
 import '../util/logger.dart';
 import 'settings_provider.dart';
+import 'connection_provider.dart';
 
 /// 在线设备列表
 final onlineDevicesProvider =
@@ -49,6 +50,14 @@ class DiscoveryNotifier extends Notifier<List<Device>> {
   List<Device> build() {
     // 异步启动：先解析 IP，再绑定到正确网卡启动服务
     _startDiscovery();
+    // 监听 TCP 服务器端口变化，更新发现广播的端口
+    ref.listen(activeServerPortProvider, (prev, next) {
+      if (prev != next && _service != null) {
+        Logger.log('[DISCOVERY] Port changed $prev -> $next, updating discovery');
+        _service!.updateLocalPort(next);
+        _service!.broadcastNow();
+      }
+    });
     ref.onDispose(_onDispose);
     return [];
   }
@@ -57,15 +66,15 @@ class DiscoveryNotifier extends Notifier<List<Device>> {
     // 防止 build() 多次调用导致多个 UDP socket 并存、互相抢包
     if (_service != null) return;
 
-    final settings = ref.read(settingsRepositoryProvider);
     final localDevice = ref.read(localDeviceProvider);
+    final port = ref.read(activeServerPortProvider);
 
-    Logger.log('[DISCOVERY] Creating service: deviceId=${localDevice.deviceId} port=${settings.serverPort}');
+    Logger.log('[DISCOVERY] Creating service: deviceId=${localDevice.deviceId} port=$port');
 
     _service = DiscoveryService(
       localDeviceId: localDevice.deviceId,
       localDeviceName: localDevice.name,
-      localPort: settings.serverPort,
+      localPort: port,
       protocolVersion: 1,
       platform: 'flutter',
     );
@@ -156,6 +165,11 @@ class DiscoveryNotifier extends Notifier<List<Device>> {
       _service!.updateBroadcastAddresses(_allLocalIps);
     }
     state = [...state];
+  }
+
+  /// 手动添加设备到列表（TCP 连接建立但 UDP 广播未到达时使用）
+  void upsertDevice(Device device) {
+    _service?.upsertDevice(device);
   }
 
   /// 立即刷新设备发现：重新解析 IP + 立即广播

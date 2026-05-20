@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:io';
 
-/// Simple file logger for debugging. Writes to fastshare_debug.log in the user's temp directory.
+/// Simple file logger for debugging. Writes to fastshare_debug.log.
 ///
+/// On desktop, defaults to %TEMP%. On Android, pass a directory from
+/// [getTemporaryDirectory] or [getApplicationDocumentsDirectory].
 /// Uses async file writes to avoid blocking the caller's thread.
 class Logger {
   static File? _file;
@@ -13,13 +15,19 @@ class Logger {
 
   static String get path => _logPath ?? '';
 
-  static void init({String suffix = ''}) {
+  /// [dirPath] — writable directory for the log file.
+  /// If omitted, uses the system temp directory (desktop) or skips file
+  /// logging (Android, where "." is read-only).
+  static void init({String? dirPath, String suffix = ''}) {
     try {
-      final dirPath = Platform.environment['TEMP'] ?? Platform.environment['TMP'] ?? '.';
+      final dir = dirPath ??
+          Platform.environment['TEMP'] ??
+          Platform.environment['TMP'] ??
+          '.';
       final name = suffix.isEmpty ? 'fastshare_debug.log' : 'fastshare_debug$suffix.log';
-      _logPath = '$dirPath${Platform.pathSeparator}$name';
+      _logPath = '$dir${Platform.pathSeparator}$name';
       _file = File(_logPath!);
-      _file!.writeAsString('=== FastShare Debug Log ${DateTime.now()} ===\n', mode: FileMode.append);
+      _file!.writeAsStringSync('=== FastShare Debug Log ${DateTime.now()} ===\n', mode: FileMode.write, flush: true);
     } catch (_) {
       _file = null;
     }

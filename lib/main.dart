@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
 import 'storage/database.dart';
@@ -11,7 +12,13 @@ import 'app.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  Logger.init();
+
+  // 获取可写目录初始化日志：移动端用临时目录，桌面端用系统 TEMP
+  String? logDir;
+  try {
+    logDir = (await getTemporaryDirectory()).path;
+  } catch (_) {}
+  Logger.init(dirPath: logDir);
 
   // 初始化 SharedPreferences
   final prefs = await SharedPreferences.getInstance();

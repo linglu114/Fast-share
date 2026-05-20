@@ -7,7 +7,7 @@ import '../engine/frame.dart';
 ///
 /// 监听指定端口，接受连接，管理连接池。
 class TcpServer {
-  final int port;
+  int port;
   ServerSocket? _server;
   final _connections = <String, TcpConnection>{};
   final _connectionController = StreamController<TcpConnection>.broadcast();
@@ -16,9 +16,10 @@ class TcpServer {
 
   TcpServer({this.port = 45678});
 
-  /// 启动服务器
+  /// 启动服务器。port=0 时由系统分配可用端口。
   Future<void> start() async {
-    _server = await ServerSocket.bind(InternetAddress.anyIPv4, port);
+    _server = await ServerSocket.bind(InternetAddress.anyIPv4, port, shared: true);
+    port = _server!.port; // 记录实际绑定的端口（port=0 时由系统分配）
     _server!.listen(_handleConnection);
   }
 

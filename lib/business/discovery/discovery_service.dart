@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import '../../models/device.dart';
+import '../../util/logger.dart';
+import '../../util/wifi_lock.dart';
 
 /// 设备发现服务 (MVP: UDP 广播)
 ///
@@ -28,7 +30,7 @@ class DiscoveryService {
 
   final String localDeviceId;
   final String localDeviceName;
-  final int localPort;
+  int localPort;
   final int protocolVersion;
   final String platform;
 
@@ -50,6 +52,7 @@ class DiscoveryService {
     if (_started) return;
     _started = true;
 
+    await WifiLock.acquire();
     await _bind(bindAddress);
     // 绑定指定 IP 失败时回退到 anyIPv4
     if (_socket == null && bindAddress != null) {
@@ -82,9 +85,9 @@ class DiscoveryService {
       _socket = await RawDatagramSocket.bind(addr, _discoveryPort,
           reuseAddress: true);
       _socket!.broadcastEnabled = true;
+      Logger.log('[DISCOVERY] Socket bound to ${addr.address}:$_discoveryPort, broadcast=${_socket!.broadcastEnabled}');
     } catch (e) {
-      // ignore: avoid_print
-      print('[DiscoveryService] _bind failed (addr=$bindAddress): $e');
+      Logger.log('[DISCOVERY] _bind failed (addr=$bindAddress): $e');
       _socket = null;
     }
   }
@@ -139,6 +142,8 @@ class DiscoveryService {
       // 使用实际的发送方 IP 而不是广播地址
       final deviceIp = datagram.address.address;
 
+      Logger.log('[DISCOVERY] Received hello from $name ($deviceId) at $deviceIp');
+
       final device = Device(
         deviceId: deviceId,
         name: name,
@@ -167,14 +172,39 @@ class DiscoveryService {
 
       _devicesController.add(_devices.values.toList());
     } catch (e) {
-      // ignore: avoid_print
-      print('[DiscoveryService] _onData parse error: $e');
+      Logger.log('[DiscoveryService] _onData parse error: $e');
     }
   }
 
   /// 立即发送一次广播宣告（供外部刷新调用）
   void broadcastNow() {
     _broadcast();
+  }
+
+  /// 更新 TCP 服务器端口，确保发现广播声明正确的端口
+  void updateLocalPort(int port) {
+    if (localPort == port) return;
+    localPort = port;
+    Logger.log('[DISCOVERY] localPort updated to $port');
+  }
+
+  /// 手动添加或更新设备（用于 TCP 连接建立时的回退）
+  void upsertDevice(Device device) {
+    if (device.deviceId == localDeviceId) return;
+    final isNew = !_devices.containsKey(device.deviceId);
+    _devices[device.deviceId] = device;
+    _offlineTimers[device.deviceId]?.cancel();
+    _offlineTimers[device.deviceId] = Timer(const Duration(seconds: 15), () {
+      _devices.remove(device.deviceId);
+      _offlineTimers.remove(device.deviceId);
+      _deviceDownController.add(device.deviceId);
+      _devicesController.add(_devices.values.toList());
+    });
+    if (isNew) {
+      _deviceUpController.add(device);
+    }
+    _devicesController.add(_devices.values.toList());
+    Logger.log('[DISCOVERY] upsertDevice: ${device.name} (${device.deviceId}) at ${device.ip}');
   }
 
   /// 根据检测到的本机 IP 列表更新广播目标地址
@@ -221,6 +251,7 @@ class DiscoveryService {
     });
 
     final data = utf8.encode(message);
+    Logger.log('[DISCOVERY] Broadcasting to $_broadcastAddresses');
     for (final addr in _broadcastAddresses) {
       try {
         _socket!.send(
@@ -229,8 +260,7 @@ class DiscoveryService {
           _discoveryPort,
         );
       } catch (e) {
-        // ignore: avoid_print
-        print('[DiscoveryService] broadcast to $addr failed: $e');
+        Logger.log('[DiscoveryService] broadcast to $addr failed: $e');
       }
     }
   }
@@ -262,6 +292,7 @@ class DiscoveryService {
     _broadcastTimer?.cancel();
     _cleanupTimer?.cancel();
     _started = false;
+    WifiLock.release();
     _devices.clear();
     for (final t in _offlineTimers.values) {
       t.cancel();
