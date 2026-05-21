@@ -404,9 +404,7 @@ class _ReceiveTransferCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final showActions = task.status == TransferStatus.transferring;
     return Card(
-      color: Colors.green.shade50,
       elevation: 2,
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -415,11 +413,11 @@ class _ReceiveTransferCard extends StatelessWidget {
           children: [
             Row(
               children: [
-                const Icon(Icons.download, size: 20, color: Colors.green),
+                const Icon(Icons.swap_horiz, size: 20),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    '正在接收: ${task.batchName ?? '文件传输'}',
+                    task.batchName ?? '文件传输',
                     style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
                   ),
                 ),
@@ -452,7 +450,7 @@ class _ReceiveTransferCard extends StatelessWidget {
             const SizedBox(height: 4),
             Row(
               children: [
-                _buildSpeedChip(task.avgSpeed),
+                _SpeedChip(bytesPerSecond: task.avgSpeed),
                 const SizedBox(width: 12),
                 if (task.avgSpeed > 0)
                   Text(
@@ -483,17 +481,16 @@ class _ReceiveTransferCard extends StatelessWidget {
                     style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
                   ),
                 ),
-                if (showActions)
-                  TextButton.icon(
+                if (task.status == TransferStatus.transferring)
+                  IconButton(
+                    icon: const Icon(Icons.close, size: 20),
+                    tooltip: '取消',
                     onPressed: () {
                       ref.read(connectionStateProvider.notifier).cancelReceiveTransfer(
                         task.senderDeviceId,
                         task.transferId,
                       );
                     },
-                    icon: const Icon(Icons.close, size: 16),
-                    label: const Text('取消接收'),
-                    style: TextButton.styleFrom(foregroundColor: Colors.red),
                   ),
                 if (task.status == TransferStatus.completed ||
                     task.status == TransferStatus.failed ||
@@ -515,8 +512,8 @@ class _ReceiveTransferCard extends StatelessWidget {
 
   Widget _buildStatusChip(TransferStatus status) {
     final (label, color) = switch (status) {
-      TransferStatus.awaitingAccept => ('等待同意', Colors.orange),
-      TransferStatus.transferring => ('接收中', Colors.blue),
+      TransferStatus.awaitingAccept => ('等待接受', Colors.orange),
+      TransferStatus.transferring => ('传输中', Colors.blue),
       TransferStatus.completed => ('完成', Colors.green),
       TransferStatus.failed => ('失败', Colors.red),
       TransferStatus.rejected => ('已拒绝', Colors.red),
@@ -528,18 +525,6 @@ class _ReceiveTransferCard extends StatelessWidget {
       backgroundColor: color,
       padding: EdgeInsets.zero,
       materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-    );
-  }
-
-  Widget _buildSpeedChip(double bytesPerSecond) {
-    final text = formatSpeed(bytesPerSecond);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: Colors.green.shade100,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Text(text, style: TextStyle(fontSize: 12, color: Colors.green.shade700)),
     );
   }
 }

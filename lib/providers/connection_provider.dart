@@ -319,13 +319,6 @@ class ConnectionNotifier extends Notifier<Map<String, bool>> {
         savePath: task.savePath,
       ));
     } catch (_) {}
-
-    // Clear after a brief delay so UI can show the final state
-    Future.delayed(const Duration(seconds: 3), () {
-      if (ref.read(receiveTransferProvider)?.transferId == task.transferId) {
-        ref.read(receiveTransferProvider.notifier).state = null;
-      }
-    });
   }
 
   ConnectionManager? get manager => _manager;
