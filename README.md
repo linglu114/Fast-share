@@ -1,4 +1,4 @@
-# FastShare — 局域网文件传输应用
+# 瞬息 (FastShare) — 局域网文件传输应用
 
 跨平台局域网文件传输，基于 Flutter + 自定义 FLP 协议。
 

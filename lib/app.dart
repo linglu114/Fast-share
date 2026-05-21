@@ -60,7 +60,7 @@ class _FastShareAppState extends ConsumerState<FastShareApp> {
 
     return MaterialApp(
       navigatorKey: _navigatorKey,
-      title: 'FastShare',
+      title: '瞬息',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorSchemeSeed: Colors.blue,
