@@ -12,7 +12,9 @@ import '../business/connection/connection_manager.dart';
 import '../network/tcp_server.dart';
 import '../storage/trusted_device_repository.dart';
 import '../util/logger.dart';
+import '../platform/foreground_service_manager.dart';
 import 'settings_provider.dart';
+import 'transfer_provider.dart';
 import 'discovery_provider.dart';
 
 /// 信任设备仓库 Provider
@@ -275,6 +277,19 @@ class ConnectionNotifier extends Notifier<Map<String, bool>> {
           if (peak > task.peakSpeed) task.peakSpeed = peak;
           return task.clone();
         });
+        // 更新前台通知进度
+        if (ForegroundServiceManager().isRunning) {
+          final task = ref.read(receiveTransferProvider);
+          if (task != null) {
+            ForegroundServiceManager().updateNotification(
+              title: '接收自${task.peerDeviceName ?? ""}',
+              body: '${(task.bytesTransferred / 1024 / 1024).toStringAsFixed(0)} / '
+                  '${(task.totalSize / 1024 / 1024).toStringAsFixed(0)} MB',
+              progress: task.bytesTransferred,
+              progressMax: task.totalSize,
+            );
+          }
+        }
         break;
       case 'file_complete':
         final fileId = event['fileId'] as String?;
@@ -299,6 +314,10 @@ class ConnectionNotifier extends Notifier<Map<String, bool>> {
 
   Future<void> _onReceiveComplete(TransferTask task, bool success) async {
     task.status = success ? TransferStatus.completed : TransferStatus.failed;
+    // 没有活跃发送时停止前台服务
+    if (ref.read(activeTransferProvider) == null) {
+      ForegroundServiceManager().stop();
+    }
     if (success) task.bytesTransferred = task.totalSize;
     ref.read(receiveTransferProvider.notifier).state = task.clone();
 

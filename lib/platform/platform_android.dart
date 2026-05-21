@@ -36,6 +36,30 @@ class AndroidPlatform implements PlatformInterface {
   }
 
   @override
+  Future<void> stopForegroundService() async {
+    try {
+      await _channel.invokeMethod('stopForegroundService');
+    } on MissingPluginException {}
+  }
+
+  @override
+  Future<void> updateNotification({
+    required String title,
+    required String body,
+    int? progress,
+    int? progressMax,
+  }) async {
+    try {
+      await _channel.invokeMethod('updateNotification', {
+        'title': title,
+        'body': body,
+        if (progress != null) 'progress': progress,
+        if (progressMax != null) 'progressMax': progressMax,
+      });
+    } on MissingPluginException {}
+  }
+
+  @override
   Future<void> showNotification({
     required int id,
     required String title,

@@ -7,6 +7,7 @@ import '../models/device.dart';
 import '../engine/commands.dart';
 import '../engine/transfer_engine.dart';
 import '../util/logger.dart';
+import '../platform/foreground_service_manager.dart';
 import 'settings_provider.dart';
 import '../models/history_record.dart';
 import '../storage/history_repository.dart';
@@ -218,6 +219,20 @@ class TransferNotifier extends Notifier<void> {
       if (peak > task.peakSpeed) task.peakSpeed = peak;
       return task.clone();
     });
+
+    // 更新前台通知进度
+    if (ForegroundServiceManager().isRunning) {
+      final task = ref.read(activeTransferProvider);
+      if (task != null) {
+        ForegroundServiceManager().updateNotification(
+          title: '发送到${task.peerDeviceName ?? ""}',
+          body: '${(task.bytesTransferred / 1024 / 1024).toStringAsFixed(0)} / '
+              '${(task.totalSize / 1024 / 1024).toStringAsFixed(0)} MB',
+          progress: task.bytesTransferred,
+          progressMax: task.totalSize,
+        );
+      }
+    }
   }
 
   void _onFileComplete(Map<String, dynamic> data) {
@@ -282,6 +297,11 @@ class TransferNotifier extends Notifier<void> {
       final queue = ref.read(transferQueueProvider);
       ref.read(transferQueueProvider.notifier).state =
           queue.where((t) => t.transferId != transferId).toList();
+    }
+
+    // 队列为空时停止前台服务（如有并发接收，其进度事件会自动重启）
+    if (ref.read(transferQueueProvider).isEmpty) {
+      ForegroundServiceManager().stop();
     }
 
     // 销毁 Engine Isolate

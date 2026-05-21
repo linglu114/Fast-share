@@ -18,6 +18,7 @@ void main() async {
   // Android: 首次启动时就申请存储权限，确保下载目录可写
   if (Platform.isAndroid) {
     await _requestStoragePermissions();
+    await _requestNotificationPermission();
   }
 
   // 获取可写目录初始化日志：移动端用临时目录，桌面端用系统 TEMP
@@ -102,6 +103,17 @@ Future<void> _requestStoragePermissions() async {
     final status = await Permission.storage.status;
     if (!status.isGranted) {
       await Permission.storage.request();
+    }
+  }
+}
+
+/// Android 13+ 通知权限（前台服务必需）
+Future<void> _requestNotificationPermission() async {
+  final sdkInt = _parseAndroidSdkInt();
+  if (sdkInt >= 33) {
+    final status = await Permission.notification.status;
+    if (!status.isGranted) {
+      await Permission.notification.request();
     }
   }
 }

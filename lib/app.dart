@@ -6,9 +6,12 @@ import 'ui/pages/transfer/transfer_page.dart';
 import 'ui/pages/transfer/receive_confirm_dialog.dart';
 import 'ui/pages/history/history_page.dart';
 import 'ui/pages/settings/settings_page.dart';
+import 'models/transfer_task.dart';
+import 'platform/foreground_service_manager.dart';
 import 'providers/settings_provider.dart';
 import 'providers/connection_provider.dart';
 import 'providers/discovery_provider.dart';
+import 'providers/transfer_provider.dart';
 import 'providers/navigation_provider.dart';
 import 'providers/clipboard_provider.dart';
 
@@ -22,7 +25,8 @@ class FastShareApp extends ConsumerStatefulWidget {
   ConsumerState<FastShareApp> createState() => _FastShareAppState();
 }
 
-class _FastShareAppState extends ConsumerState<FastShareApp> {
+class _FastShareAppState extends ConsumerState<FastShareApp>
+    with WidgetsBindingObserver {
   final _pages = <Widget>[
     const DevicesPage(),
     const TransferPage(),
@@ -32,6 +36,61 @@ class _FastShareAppState extends ConsumerState<FastShareApp> {
 
   final _navigatorKey = GlobalKey<NavigatorState>();
   TransferOffer? _lastShownOffer;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused) {
+      _onAppBackground();
+    } else if (state == AppLifecycleState.resumed) {
+      _onAppForeground();
+    }
+  }
+
+  void _onAppBackground() {
+    final activeTransfer = ref.read(activeTransferProvider);
+    final receiveTransfer = ref.read(receiveTransferProvider);
+    final serverPort = ref.read(activeServerPortProvider);
+    final hasActiveWork = activeTransfer != null ||
+        receiveTransfer != null ||
+        serverPort > 0;
+
+    if (!hasActiveWork) return;
+
+    String title = '瞬息';
+    String body = 'Running in background';
+    if (activeTransfer != null &&
+        activeTransfer.status == TransferStatus.transferring) {
+      body = '发送文件中…';
+    } else if (receiveTransfer != null &&
+        receiveTransfer.status == TransferStatus.transferring) {
+      body = '接收文件中…';
+    }
+
+    ForegroundServiceManager().start(title: title, body: body);
+  }
+
+  void _onAppForeground() {
+    ForegroundServiceManager().stop();
+
+    // 延迟触发发现刷新，快速恢复设备列表
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted) {
+        ref.read(onlineDevicesProvider.notifier).refreshNow();
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {

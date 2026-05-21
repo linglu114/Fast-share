@@ -8,6 +8,17 @@ abstract class PlatformInterface {
   /// 启动前台服务 / 系统托盘
   Future<void> startForegroundService(Map<String, dynamic> config);
 
+  /// 停止前台服务 / 移除通知
+  Future<void> stopForegroundService();
+
+  /// 更新前台通知内容（传输进度等）
+  Future<void> updateNotification({
+    required String title,
+    required String body,
+    int? progress,
+    int? progressMax,
+  });
+
   /// 显示通知
   Future<void> showNotification({
     required int id,

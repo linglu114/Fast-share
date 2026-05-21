@@ -37,6 +37,21 @@ class WindowsPlatform implements PlatformInterface {
   }
 
   @override
+  Future<void> stopForegroundService() async {
+    // Windows: not applicable
+  }
+
+  @override
+  Future<void> updateNotification({
+    required String title,
+    required String body,
+    int? progress,
+    int? progressMax,
+  }) async {
+    // Windows: not applicable
+  }
+
+  @override
   Future<void> showNotification({
     required int id,
     required String title,
