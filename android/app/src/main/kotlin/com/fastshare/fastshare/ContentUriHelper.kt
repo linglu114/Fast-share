@@ -70,8 +70,13 @@ object ContentUriHelper {
                     skipped += s
                 }
                 val buffer = ByteArray(length)
-                val bytesRead = input.read(buffer)
-                if (bytesRead > 0) buffer.copyOf(bytesRead) else ByteArray(0)
+                var totalRead = 0
+                while (totalRead < length) {
+                    val n = input.read(buffer, totalRead, length - totalRead)
+                    if (n < 0) break
+                    totalRead += n
+                }
+                if (totalRead > 0) buffer.copyOf(totalRead) else ByteArray(0)
             }
         } catch (_: Exception) {
             null

@@ -389,9 +389,13 @@ class TransferNotifier extends Notifier<void> {
     // 创建任务
     final batchName = folderMode
         ? '文件夹: ${paths.first.split('/').last.split('\\').last}'
-        : paths.length == 1
-            ? paths.first.split('/').last.split('\\').last
-            : '${paths.length} 个文件';
+        : (contentFiles != null && contentFiles.isNotEmpty)
+            ? contentFiles.length == 1
+                ? contentFiles.first['name'] ?? 'unknown'
+                : '${contentFiles.length} 个文件'
+            : paths.length == 1
+                ? paths.first.split('/').last.split('\\').last
+                : '${paths.length} 个文件';
     final task = TransferTask(
       transferId: transferId,
       senderDeviceId: settings.deviceId ?? 'unknown',
